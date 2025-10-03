@@ -256,7 +256,7 @@ classdef LabjackT7 < handle
             LabJack.LJM.NamesToAddresses(obj.numIN,obj.ScanListNames,obj.NETScanList,obj.Types)
 
             % set stream resolution
-            LabJack.LJM.eWriteName(obj.handle,'STREAM_RESOLUTION_INDEX',1)
+            LabJack.LJM.eWriteName(obj.handle,'STREAM_RESOLUTION_INDEX',7)
         end
         
 
@@ -273,16 +273,16 @@ classdef LabjackT7 < handle
             rawdata = NET.createArray('System.Double',scanNum*obj.numIN);
 
             % run scan
-            fprintf('-----------------------------------------------------------------------\n')
-            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',obj.ScanRate)
-            fprintf('-----------------------------------------------------------------------\n')
+            disp('-----------------------------------------------------------------------\n')
+            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n')
+            disp('-----------------------------------------------------------------------\n')
             [~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, rawdata);  
 
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels
             for idx = 1:scanNum
                 data(idx) = rawdata(idx);
             end
-            data = reshape(data,obj.numIN,[]);
+            data = reshape(data,obj.,[]);
         end
         
     end
