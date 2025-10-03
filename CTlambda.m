@@ -1,0 +1,1 @@
+function CT = CTlambda(RPM,Vinf)%UNTITLED3 Summary of this function goes here%   Detailed explanation goes here    load('ctinterp2.mat','ctVrpm')        RPM = double(RPM);    Vinf = double(Vinf);        if isreal(Vinf)        CT = ctVrpm(RPM',Vinf);    else        CT = ctVrpm(RPM',zeros(size(RPM')));    endend
