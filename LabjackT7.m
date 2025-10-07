@@ -198,8 +198,8 @@ classdef LabjackT7 < handle
             aValues = NET.createArray('System.Double', numFrames);
             aValues(1) = 199;
             aValues(2) = 10;
-            aValues(3) = 0;
-            aValues(4) = 0;
+            aValues(3) = 1;
+            aValues(4) = 1;
 
             LabJack.LJM.eWriteNames(obj.handle, numFrames, aNames, aValues, 0);
             obj.AINChannels = [obj.AINChannels, channel_name];
@@ -219,7 +219,6 @@ classdef LabjackT7 < handle
                 % confiure channel and add to tracking list, otherwise display error
                 try
                     obj.AINSingleEnded(channel_names(channel_num));
-                    obj.AINChannels = [obj.AINChannels,channel_names(channel_num)];
                 catch e 
                     disp(e);
                 end
@@ -237,12 +236,14 @@ classdef LabjackT7 < handle
         function obj = configureStreamBurst(obj,scan_rate)
             % configure .NET arrays / labjack for scanning. Stores some .NET arrays for sending to labjack
             
-            % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
-            obj.ScanRate = scan_rate*obj.numIN;
+            
 
             % set the scan list based on DIO / AIN channels to be read
             obj.ChannelIn = [obj.AINChannels, obj.DIOInChannels];
             obj.numIN = length(obj.ChannelIn);
+
+            % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
+            obj.ScanRate = scan_rate;
             
             % create NET arrays, fill 
             obj.NETScanList = NET.createArray('System.Int32',obj.numIN);
@@ -269,17 +270,18 @@ classdef LabjackT7 < handle
             %
 
             % set up scan rate / storage .NET array
-            scanNum = obj.ScanRate*scantime;
+            scanNum = scantime*obj.ScanRate;
             rawdata = NET.createArray('System.Double',scanNum*obj.numIN);
-
+            
             % run scan
             fprintf('-----------------------------------------------------------------------\n')
-            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',obj.ScanRate)
+            fprintf('Running stream burst with a scanRate of %3.1d Hz and time of %i s\n',obj.ScanRate,scantime)
             fprintf('-----------------------------------------------------------------------\n')
-            [~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, rawdata);  
-
+            tic;
+            [a,b] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, rawdata);  
+            toc
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels
-            for idx = 1:scanNum
+            for idx = 1:rawdata.Length
                 data(idx) = rawdata(idx);
             end
             data = reshape(data,obj.numIN,[]);
