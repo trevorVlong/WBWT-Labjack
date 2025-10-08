@@ -14,6 +14,7 @@ classdef LabjackT7 < handle
     properties(Access = public)
     % data and other relevant properties for data collection and signal output from the labjack  
         ScanRate
+        ScanNum
         clock_roll_value 
 
     % AIN tracking
@@ -25,6 +26,9 @@ classdef LabjackT7 < handle
         ScanListNames
         NETScanList
         Types
+
+        DeviceBacklog
+        LJMBacklog
 
         
     end
@@ -234,17 +238,18 @@ classdef LabjackT7 < handle
         
         end
         
-        function obj = configureStreamBurst(obj,scan_rate)
+        function obj = configureStream(obj,scan_rate)
             % configure .NET arrays / labjack for scanning. Stores some .NET arrays for sending to labjack
             
-            % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
-            obj.ScanRate = scan_rate*obj.numIN;
+            % set scan rate in Hz [1-60000]
+            obj.ScanRate = scan_rate;
 
-            % set the scan list based on DIO / AIN channels to be read
+            % set the scan list based on DIO / AIN channels in
+            % configuration list
             obj.ChannelIn = [obj.AINChannels, obj.DIOInChannels];
             obj.numIN = length(obj.ChannelIn);
             
-            % create NET arrays, fill 
+            % create NET arrays, fill out ScanList
             obj.NETScanList = NET.createArray('System.Int32',obj.numIN);
             obj.Types = NET.createArray('System.Int32',obj.numIN);
             obj.ScanListNames = NET.createArray('System.String',obj.numIN);
@@ -255,12 +260,12 @@ classdef LabjackT7 < handle
             % get addresses from names
             LabJack.LJM.NamesToAddresses(obj.numIN,obj.ScanListNames,obj.NETScanList,obj.Types)
 
-            % set stream resolution
+            % set stream resolution (1 for speed, 8 for accuracy)
             LabJack.LJM.eWriteName(obj.handle,'STREAM_RESOLUTION_INDEX',1)
         end
         
 
-        function data = streamBurst(obj,scantime)
+        function data = streamBurst(obj,scantime_in_s)
             % STREAMBURST sets the labjack to record data on all active channels for a set amount of time and 
             % the rate in class settings. The total number of measurements will  
             %
@@ -268,21 +273,28 @@ classdef LabjackT7 < handle
             % :scantime int: [s] time to scan 
             %
 
-            % set up scan rate / storage .NET array
-            scanNum = obj.ScanRate*scantime;
-            rawdata = NET.createArray('System.Double',scanNum*obj.numIN);
+            % set up scan rate / storage .NET array, create data array
+            scanNum = obj.ScanRate*scantime_in_s;
+            netdata = NET.createArray('System.Double',scanNum*obj.numIN);
 
             % run scan
             fprintf('-----------------------------------------------------------------------\n')
-            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',obj.ScanRate)
+            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',scantime,obj.ScanRate)
             fprintf('-----------------------------------------------------------------------\n')
-            [~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, rawdata);  
+            [err, ~, deviceBacklog, ljmBacklog] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, netdata);  
 
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels
             for idx = 1:scanNum
-                data(idx) = rawdata(idx);
+                data(idx) = netdata(idx);
             end
             data = reshape(data,obj.numIN,[]);
+
+            fprintf('Stream Complete\n');
+            fprintf('Device Backlog: %d\n',deviceBacklog);
+            fprintf('LJM Backlog: %d\n',ljmBacklog);
+            fprintf('Error Status: %d \n',err)
+            fprintf('-----------------------------------------------------------------------\n')
+            fprintf('-----------------------------------------------------------------------\n')
         end
         
     end
