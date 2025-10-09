@@ -100,75 +100,6 @@ classdef LabjackT7 < handle
             LabJack.LJM.eWriteName(obj.handle, "DIO0_EF_CONFIG_A", 80*PWM);
             LabJack.LJM.eWriteName(obj.handle,"DIO0_EF_ENABLE",1);
         end    
-        
-% MotorMap
-        
-        function motorMapSetup(obj)
-    %        Set up to run
-    %        
-    %        AIN0: Baratron
-    %        AIN1: X-force cell
-    %        AIN2: None
-    %        AIN3: None
-    %        AIN4: None
-    %        AIN5: None
-    %        AIN6: None
-    %        DIO0: PWMout ( set up in setPWM)
-    %        DIO1: RPM 1 in
-    %        DIO2: None
-    %        DIO3: None
-    %        DIO4: None
-    %        Internal: Internal Counter
-
-            obj.scanNum = obj.scanRate * obj.scanTime;
-            
-            
-    %% setup up channels
-            obj.numIN = 3; % number of total inputs to record
-            obj.cScanListNames = NET.createArray('System.String',obj.numIN+1);
-            obj.cTypes = NET.createArray('System.Int32',obj.numIN);
-            obj.cScanList = NET.createArray('System.Int32',obj.numIN);
-            
-
-            obj.cScanListNames(1) = 'AIN0';
-            obj.cScanListNames(2) = 'AIN1';
-            obj.cScanListNames(3) = 'DIO1_EF_READ_A_AND_RESET';
-            obj.cScanListNames(4) = 'STREAM_DATA_CAPTURE_16'; % I forget what this does, but I think it's accuracy
-
-            
-            % get LabJack address for inputs above
-            LabJack.LJM.NamesToAddresses(obj.numIN,obj.cScanListNames,obj.cScanList,obj.cTypes)
-
-
-            % set up DIO1 to count pulses (to count RPM)
-            LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),0)
-            
-            % number of channels being recorded
-            obj.cnFrames = 3;
-            obj.cNames = NET.createArray('System.String',obj.cnFrames);
-            
-            
-            obj.cNames(1) = 'AIN_ALL_NEGATIVE_CH';
-            obj.cNames(2) = 'AIN0_RANGE';
-            obj.cNames(3) = 'AIN1_RANGE';
-            obj.cNames(4) = 'STREAM_SETTLING_US';
-            obj.cNames(5) = 'STREAM_RESOLUTION_INDEX';
-            obj.cNames(6) = 'DIO1_EF_INDEX';
-
-            
-            obj.cValues = NET.createArray('System.Double',obj.cnFrames);
-            obj.cValues(1) = obj.LJM_CONSTANTS.GND;
-            obj.cValues(2) = 10.0;
-            obj.cValues(3) = 10.0;
-            obj.cValues(4) = 0;
-            obj.cValues(5) = 7;
-            obj.cValues(6) = 8;
-  
-            % re-enable DIO clocks ??
-            LabJack.LJM.eWriteNames(obj.handle,obj.cnFrames,obj.cNames,obj.cValues,-1);
-            LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),1)
-            
-        end
 
         function obj = SetDIOCounter(obj)
             % SETDIOCOUNTER configures DIO1 to  be a counter port and adds it to DIO1 in tracking
@@ -176,7 +107,7 @@ classdef LabjackT7 < handle
 
             try
                 LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),0);
-                Labjack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_INDEX'),8);
+                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_INDEX'),8);
                 LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),1);
                 obj.DIOInChannels = [obj.DIOInChannels, 'DIO1'];
             catch e 
@@ -239,8 +170,14 @@ classdef LabjackT7 < handle
         
         function obj = configureStream(obj,scan_rate)
             % configure .NET arrays / labjack for scanning. Stores some .NET arrays for sending to labjack
-            % set scan rate in Hz [1-60000]
-            obj.ScanRate = scan_rate;
+            % set scan rate in Hz [1-60000]. Note that for some reason
+            % stream burst only likes to operate between 500Hz and 1000Hz.
+            % Really couldn't explain why
+            arguments
+                obj LabjackT7
+                scan_rate (1,1) double {mustBeInteger,mustBeGreaterThan(scan_rate,0)} = 1000 
+            end
+            
 
             % set the scan list based on DIO / AIN channels in
             % configuration list
@@ -248,7 +185,7 @@ classdef LabjackT7 < handle
             obj.numIN = length(obj.ChannelIn);
 
             % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
-            obj.ScanRate = scan_rate;
+            obj.ScanRate = scan_rate*obj.numIN;
             
             % create NET arrays, fill out ScanList
             obj.NETScanList = NET.createArray('System.Int32',obj.numIN);
@@ -279,21 +216,21 @@ classdef LabjackT7 < handle
             netdata = NET.createArray('System.Double',scanNum*obj.numIN);
 
             % run scan
-            fprintf('-----------------------------------------------------------------------\n')
-            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',scantime,obj.ScanRate)
-            fprintf('-----------------------------------------------------------------------\n')
-            [err, ~, deviceBacklog, ljmBacklog] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, netdata);  
+            fprintf('-----------------------------------------------------------------------\n');
+            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',scantime_in_s,obj.ScanRate);
+            fprintf('-----------------------------------------------------------------------\n');
+            tic;
+            [err, ~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, netdata);
 
+            toc
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels
             for idx = 1:scanNum
                 data(idx) = netdata(idx);
             end
             data = reshape(data,obj.numIN,[]);
-
+            
             fprintf('Stream Complete\n');
-            fprintf('Device Backlog: %d\n',deviceBacklog);
-            fprintf('LJM Backlog: %d\n',ljmBacklog);
-            fprintf('Error Status: %d \n',err)
+            fprintf('Error Status: %s \n',err)
             fprintf('-----------------------------------------------------------------------\n')
             fprintf('-----------------------------------------------------------------------\n')
         end
