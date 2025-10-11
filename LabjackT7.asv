@@ -13,7 +13,7 @@ classdef LabjackT7 < handle
     
     properties(Access = public)
     % data and other relevant properties for data collection and signal output from the labjack  
-        ScanRate
+        SCANRATE
         ScanNum
         clock_roll_value 
 
@@ -30,7 +30,8 @@ classdef LabjackT7 < handle
         DeviceBacklog
         LJMBacklog
         
-        STREAM_RESOLUTION_INDEX = 0;
+        SCAN_RATE = 10; % scan rate in Hz
+        STREAM_RESOLUTION_INDEX = 0; % 0 for fast, 8 for accurate but slow
         
     end
     
@@ -102,19 +103,33 @@ classdef LabjackT7 < handle
             LabJack.LJM.eWriteName(obj.handle,"DIO0_EF_ENABLE",1);
         end    
 
-        function obj = SetDIOCounter(obj)
-            % SETDIOCOUNTER configures DIO1 to  be a counter port and adds it to DIO1 in tracking
-            % set up DIO1 to count pulses (to count RPM)
+        function obj = setupCounter(obj,port_name)
+            % SETDIOCOUNTER configures digital counter port. Default
+            % counter port is DIO18 (CIO2) which is a high-speed counter
+            % port that is always active on the T7. Other viable ports are
+            % CIO0-3 (DIO16-DIO19). 
+            %
+            % reference: https://support.labjack.com/docs/13-2-8-high-speed-counter-t-series-datasheet
 
-            try
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),0);
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_INDEX'),8);
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),1);
-                obj.DIOInChannels = [obj.DIOInChannels, 'DIO1'];
-            catch e 
-                disp(e);
+            arguments
+                obj (1,1) LabjackT7
+                port_name (1,1) string {mustBeTextScalar,mustBeMember(port_name,["DIO16","DIO17","DIO18","DIO19"])} = "DIO18"
             end
-
+            
+            read_register = sprintf("%s_EF_READ_A",port_name);
+            if ~ismember(port_name,obj.DIOInChannels)
+                try
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),0);
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_INDEX',port_name),7);
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),1);
+                    
+                    obj.DIOInChannels = [obj.DIOInChannels, read_register];
+                catch e 
+                    disp(e);
+                end
+            else
+                warning("%s is already a configured port",port_name)
+            end
 
         end
 
@@ -186,7 +201,7 @@ classdef LabjackT7 < handle
             obj.numIN = length(obj.ChannelIn);
 
             % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
-            obj.ScanRate = scan_rate*obj.numIN;
+            obj.SCANRATE = scan_rate*obj.numIN;
             
             % create NET arrays, fill out ScanList
             obj.NETScanList = NET.createArray('System.Int32',obj.numIN);
@@ -248,13 +263,13 @@ classdef LabjackT7 < handle
 
         function data = timedRead(obj,scan_time)
             %TIMEDREAD reads registers in a loop  at the specified
-            %obj.ScanRate and returns an Nx(scan_rate*scan_time) matrix of
+            %obj.SCANRATE and returns an Nx(scan_rate*scan_time) matrix of
             %values. Not incredibly precise but should be OK for most
             %relatively slow measurements for short periods of time
             timeout = 1.5*scantime;
             % pre-allocate table space
-            N_points = scan_time*obj.ScanRate;
-            dt_desired = 1/obj.ScanRate;
+            N_points = scan_time*obj.SCANRATE;
+            dt_desired = 1/obj.SCANRATE;
             data_table = zeros([obj.numIN,N_points]);
             
             tic;
@@ -298,15 +313,15 @@ classdef LabjackT7 < handle
             %
 
             % set up scan rate / storage .NET array, create data array
-            scanNum = obj.ScanRate*scantime_in_s;
+            scanNum = obj.SCANRATE*scantime_in_s;
             netdata = NET.createArray('System.Double',scanNum*obj.numIN);
 
             % run scan
             fprintf('-----------------------------------------------------------------------\n');
-            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',scantime_in_s,obj.ScanRate);
+            fprintf('Running stream burst with a scantime of %3.1d s and SCANRATE %i...\n',scantime_in_s,obj.SCANRATE);
             fprintf('-----------------------------------------------------------------------\n');
             tic;
-            [err, ~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, netdata);
+            [err, ~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.SCANRATE, scanNum, netdata);
 
             toc
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels

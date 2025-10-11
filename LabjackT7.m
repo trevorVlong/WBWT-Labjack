@@ -103,19 +103,35 @@ classdef LabjackT7 < handle
             LabJack.LJM.eWriteName(obj.handle,"DIO0_EF_ENABLE",1);
         end    
 
-        function obj = SetDIOCounter(obj)
-            % SETDIOCOUNTER configures DIO1 to  be a counter port and adds it to DIO1 in tracking
-            % set up DIO1 to count pulses (to count RPM)
+        function obj = setupCounter(obj,port_name)
+            % SETDIOCOUNTER configures digital counter port to return total 
+            % number of counts in the labjack buffer. Default counter port 
+            % is DIO18 (CIO2) which is a high-speed counter  port that is 
+            % always active on the T7. Other viable ports are CIO0-3 
+            % (DIO16-DIO19). 
+            % 
+            %
+            % reference: https://support.labjack.com/docs/13-2-8-high-speed-counter-t-series-datasheet
 
-            try
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),0);
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_INDEX'),8);
-                LabJack.LJM.eWriteName(obj.handle,sprintf('DIO1_EF_ENABLE'),1);
-                obj.DIOInChannels = [obj.DIOInChannels, 'DIO1'];
-            catch e 
-                disp(e);
+            arguments
+                obj (1,1) LabjackT7
+                port_name (1,1) string {mustBeTextScalar,mustBeMember(port_name,["DIO16","DIO17","DIO18","DIO19"])} = "DIO18"
             end
-
+            
+            read_register = sprintf("%s_EF_READ_A",port_name);
+            if ~ismember(port_name,obj.DIOInChannels)
+                try
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),0);
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_INDEX',port_name),7);
+                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),1);
+                    
+                    obj.DIOInChannels = [obj.DIOInChannels, read_register];
+                catch e 
+                    disp(e);
+                end
+            else
+                warning("%s is already a configured port",port_name)
+            end
 
         end
 
@@ -151,7 +167,8 @@ classdef LabjackT7 < handle
         end
 
         function obj = multiAINSingleEnded(obj,channel_names)
-            %MULTIAINSINGLENDED configures all channels in channel_names to read single-ended +/-10V signals
+            %MULTIAINSINGLENDED configures all channels in channel_names to
+            % read single-ended +/-10V signals based on the
             for channel_num = 1:length(channel_names)
                 % confiure channel and add to tracking list, otherwise display error
                 try
