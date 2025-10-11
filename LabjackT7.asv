@@ -13,7 +13,7 @@ classdef LabjackT7 < handle
     
     properties(Access = public)
     % data and other relevant properties for data collection and signal output from the labjack  
-        SCANRATE
+        ScanRate
         ScanNum
         clock_roll_value 
 
@@ -30,8 +30,7 @@ classdef LabjackT7 < handle
         DeviceBacklog
         LJMBacklog
         
-        SCAN_RATE = 10; % scan rate in Hz
-        STREAM_RESOLUTION_INDEX = 0; % 0 for fast, 8 for accurate but slow
+        STREAM_RESOLUTION_INDEX = 0;
         
     end
     
@@ -187,7 +186,7 @@ classdef LabjackT7 < handle
             obj.numIN = length(obj.ChannelIn);
 
             % set scan rate in Hz [1-60000] calculated as desired scan rate * number of ports to read
-            obj.SCANRATE = scan_rate*obj.numIN;
+            obj.ScanRate = scan_rate*obj.numIN;
             
             % create NET arrays, fill out ScanList
             obj.NETScanList = NET.createArray('System.Int32',obj.numIN);
@@ -249,13 +248,13 @@ classdef LabjackT7 < handle
 
         function data = timedRead(obj,scan_time)
             %TIMEDREAD reads registers in a loop  at the specified
-            %obj.SCANRATE and returns an Nx(scan_rate*scan_time) matrix of
+            %obj.ScanRate and returns an Nx(scan_rate*scan_time) matrix of
             %values. Not incredibly precise but should be OK for most
             %relatively slow measurements for short periods of time
             timeout = 1.5*scantime;
             % pre-allocate table space
-            N_points = scan_time*obj.SCANRATE;
-            dt_desired = 1/obj.SCANRATE;
+            N_points = scan_time*obj.ScanRate;
+            dt_desired = 1/obj.ScanRate;
             data_table = zeros([obj.numIN,N_points]);
             
             tic;
@@ -299,15 +298,15 @@ classdef LabjackT7 < handle
             %
 
             % set up scan rate / storage .NET array, create data array
-            scanNum = obj.SCANRATE*scantime_in_s;
+            scanNum = obj.ScanRate*scantime_in_s;
             netdata = NET.createArray('System.Double',scanNum*obj.numIN);
 
             % run scan
             fprintf('-----------------------------------------------------------------------\n');
-            fprintf('Running stream burst with a scantime of %3.1d s and SCANRATE %i...\n',scantime_in_s,obj.SCANRATE);
+            fprintf('Running stream burst with a scantime of %3.1d s and scanrate %i...\n',scantime_in_s,obj.ScanRate);
             fprintf('-----------------------------------------------------------------------\n');
             tic;
-            [err, ~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.SCANRATE, scanNum, netdata);
+            [err, ~] = LabJack.LJM.StreamBurst(obj.handle, obj.numIN, obj.NETScanList, obj.ScanRate, scanNum, netdata);
 
             toc
             % reshape data for export as an MxN vector where M is number of read channels and N is the number of scans for those channels
