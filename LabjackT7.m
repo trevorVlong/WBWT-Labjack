@@ -115,22 +115,19 @@ classdef LabjackT7 < handle
 
             arguments
                 obj (1,1) LabjackT7
-                port_name (1,1) string {mustBeTextScalar,mustBeMember(port_name,["DIO16","DIO17","DIO18","DIO19"])} = "DIO18"
+                port_name (1,1) string {mustBeText,mustBeMember(port_name,["DIO16","DIO17","DIO18","DIO19"])} = "DIO18"
             end
             
             read_register = sprintf("%s_EF_READ_A",port_name);
-            if ~ismember(port_name,obj.DIOInChannels)
-                try
-                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),0);
-                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_INDEX',port_name),7);
-                    LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),1);
-                    
-                    obj.DIOInChannels = [obj.DIOInChannels, read_register];
-                catch e 
-                    disp(e);
-                end
-            else
-                warning("%s is already a configured port",port_name)
+            fprintf("Adding %s as a counter",read_register)
+            try
+                LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),0);
+                LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_INDEX',port_name),7);
+                LabJack.LJM.eWriteName(obj.handle,sprintf('%s_EF_ENABLE',port_name),1);
+                
+                obj.DIOInChannels = [obj.DIOInChannels, read_register];
+            catch e 
+                disp(e);
             end
 
         end
@@ -264,12 +261,12 @@ classdef LabjackT7 < handle
             end
         end
 
-        function data = timedRead(obj,scan_time)
+        function [data,runtime] = timedRead(obj,scan_time)
             %TIMEDREAD reads registers in a loop  at the specified
             %obj.SCANRATE and returns an Nx(scan_rate*scan_time) matrix of
             %values. Not incredibly precise but should be OK for most
             %relatively slow measurements for short periods of time
-            timeout = 1.5*scantime;
+            timeout = 1.5*scan_time;
             % pre-allocate table space
             N_points = scan_time*obj.SCANRATE;
             dt_desired = 1/obj.SCANRATE;
@@ -278,7 +275,8 @@ classdef LabjackT7 < handle
             tic;
             current_idx = 1;
             time_last = toc;
-            dt = 0;
+            time_now = time_last;
+            time_start = time_last;
             while time_now <= scan_time
 
                 % get current time, calculate dt
@@ -303,6 +301,8 @@ classdef LabjackT7 < handle
                 end
 
             end
+            data = data_table;
+            runtime = time_last-time_start;
             
 
         end
